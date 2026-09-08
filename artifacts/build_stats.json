@@ -1,0 +1,22 @@
+{
+  "rows_raw": 1389754,
+  "casino_rows_dropped": 7903,
+  "timestamp_unparseable_quarantined": 0,
+  "rows_clean": 1381851,
+  "distinct_session_keys": 15314,
+  "total_walk_steps": 1654467,
+  "distinct_nodes": 26255,
+  "distinct_edges": 122276,
+  "top_10_nodes_by_visits": {
+    "SCREEN:unknown_SB Android": 315950,
+    "ACTION:betslip_placed_bet": 143826,
+    "ACTION:betslip_add_bet": 129327,
+    "SCREEN:liveDetail": 117960,
+    "SCREEN:ticketDetail": 98697,
+    "SCREEN:ticketHistory": 80294,
+    "SCREEN:liveEvents": 78491,
+    "ACTION:betslip_repeat_from_history": 56004,
+    "SCREEN:prematchLeagues": 41119,
+    "SCREEN:prematchDetail": 40484
+  }
+}

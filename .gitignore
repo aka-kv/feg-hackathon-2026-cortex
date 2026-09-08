@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Secrets / local config -- never commit real values, only .env.example
+.env
+.env.local
+
+# Raw hackathon-provided data files -- these must never live inside this
+# repo (see docs/compliance-note.md §6). Normal builds read them from
+# outside the repo entirely (src/graph_pipeline/config.py: DATA_DIR); this
+# is a defensive backstop in case a copy is ever dropped in by mistake.
+top_sport_users_event_logs.csv
+top_casino_users_event_logs*.csv
+SB_Player.csv
+SB_MOM.csv
+EPS_Offers.csv
+hackathon_sportsbook_trends.xlsx
+hackathon_casino_trends.xlsx
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Scratch/temp
+*.tmp
+_guidelines_extract.txt
+.pytest_cache/

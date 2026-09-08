@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PSK — Session Intent Graph Explorer</title>
+<script src="https://unpkg.com/3d-force-graph"></script>
+<style>
+  :root {
+    --brand: #1752bf; --brand-light: #4f8dff; --bg: #0b0e14; --surface: #141924; --surface-2: #1c2330;
+    --border: #2b3444; --text: #f4f6fb; --text-muted: #8a94a6; --green: #1fb15f; --gold: #ffc94a; --danger: #ff5c5c;
+    --font: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); height: 100vh; overflow: hidden; }
+  header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  header .mark { font-size: 18px; font-weight: 800; letter-spacing: -.02em;
+    background: linear-gradient(135deg, var(--brand-light), var(--brand)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header .subtitle { font-size: 12px; color: var(--text-muted); }
+  .mode-tabs { display: flex; gap: 6px; margin-left: auto; }
+  .mode-tabs button { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); font-size: 12px;
+    font-weight: 700; padding: 7px 14px; border-radius: 20px; cursor: pointer; }
+  .mode-tabs button.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .controls { padding: 12px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; background: var(--surface); }
+  .controls input { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px;
+    padding: 9px 12px; font-size: 13px; min-width: 260px; outline: none; }
+  .controls input:focus { border-color: var(--brand-light); }
+  .controls button { background: var(--brand); color: white; border: none; border-radius: 8px; padding: 9px 16px;
+    font-size: 13px; font-weight: 700; cursor: pointer; }
+  .controls button:hover { filter: brightness(1.1); }
+  .controls .live-status { font-size: 12px; color: var(--text-muted); margin-left: 4px; }
+  .controls .live-status.on { color: var(--green); font-weight: 700; }
+  .legend { display: flex; gap: 14px; margin-left: auto; font-size: 11px; color: var(--text-muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  #stats { padding: 8px 24px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+  #graph-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; }
+  .panel-wrap { position: relative; z-index: 1; }
+  .hint { padding: 40px 24px; color: var(--text-muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="panel-wrap">
+  <header>
+    <div class="mark">PSK</div>
+    <div class="subtitle">Session intent graph explorer — real fixture co-occurrence data, not a mockup</div>
+    <div class="mode-tabs">
+      <button id="tab-live" class="active" onclick="setMode('live')">Live session</button>
+      <button id="tab-search" onclick="setMode('search')">Search full graph</button>
+    </div>
+  </header>
+
+  <div class="controls" id="controls-live">
+    <input id="session-input" type="text" placeholder="session_key, e.g. verified-abc123::playerid" />
+    <button onclick="startLive()">Watch live</button>
+    <button onclick="stopLive()" style="background:var(--surface-3,#232b3a); color:var(--text-muted);">Stop</button>
+    <span class="live-status" id="live-status">not watching</span>
+    <div class="legend">
+      <span><i class="dot" style="background:#4f8dff"></i>Seen this session</span>
+      <span><i class="dot" style="background:#1fb15f"></i>Recommended next</span>
+      <span><i class="dot" style="background:#5b6577"></i>Neighbor (context)</span>
+      <span><i style="display:inline-block;width:14px;height:2px;background:#ffc94a;"></i>This session's real click order</span>
+      <span><i style="display:inline-block;width:14px;height:2px;background:#4f8dff;opacity:.5;"></i>Historical co-occurrence</span>
+    </div>
+  </div>
+
+  <div class="controls" id="controls-search" style="display:none">
+    <input id="search-input" type="text" placeholder="Search fixture id or sport (e.g. tenis, nogomet, 1ut-0qa)" />
+    <button onclick="runSearch()">Search</button>
+    <div class="legend">
+      <span><i class="dot" style="background:#ffc94a"></i>Matched fixture</span>
+      <span><i class="dot" style="background:#5b6577"></i>Neighbor (context)</span>
+    </div>
+  </div>
+
+  <div id="stats">Nothing loaded yet.</div>
+  <div id="data-source-note" style="padding: 6px 24px 10px; font-size: 11px; color: var(--text-muted);">
+    Every node is a real fixture_id from the raw event log; every edge is a real co-occurrence count from
+    <code>artifacts/fixture_adjacency.json</code>. Hover any node to see its real ID and sport.
+  </div>
+</div>
+
+<div id="graph-container"></div>
+<div class="hint" id="hint">Enter a session key on the left and click "Watch live" to see that session's real fixture graph grow as bets are placed — or switch to "Search full graph" to look up any real fixture or sport across the whole dataset.</div>
+
+<script>
+const API = "http://127.0.0.1:8000";
+const ROLE_COLORS = { seen: "#4f8dff", recommended: "#1fb15f", neighbor: "#5b6577", match: "#ffc94a" };
+const ROLE_SIZE = { seen: 6, recommended: 7, neighbor: 2.4, match: 6 };
+
+const Graph = ForceGraph3D()(document.getElementById("graph-container"))
+  .backgroundColor("#0b0e14")
+  .nodeLabel(n => `<div style="font-size:12px"><b>${n.sport_label || n.sport || "Unknown sport"}</b><br/>${n.id}<br/>role: ${n.role}</div>`)
+  .nodeColor(n => ROLE_COLORS[n.role] || "#8a94a6")
+  .nodeVal(n => ROLE_SIZE[n.role] || 2)
+  // Two visually distinct edge kinds, both real: "session_path" is the
+  // actual order fixtures were opened THIS session (can't come from the
+  // precomputed historical graph, which didn't know this session existed
+  // yet); "cooccurrence" is the real historical fixture_adjacency edge.
+  .linkColor(l => l.kind === "session_path" ? "#ffc94a" : "rgba(79,141,255,0.3)")
+  .linkWidth(l => l.kind === "session_path" ? 2.5 : Math.min(4, 0.5 + Math.log2((l.weight || 1) + 1)))
+  .linkOpacity(l => l.kind === "session_path" ? 0.9 : 0.35)
+  .linkDirectionalArrowLength(l => l.kind === "session_path" ? 5 : 0)
+  .linkDirectionalArrowRelPos(1);
+
+let liveTimer = null;
+let liveNodeById = new Map();
+let liveLinks = [];
+let liveSignature = "";
+
+function graphSignature(nodes, edges) {
+  const nodePart = nodes.map(n => n.id + ":" + n.role).sort().join(",");
+  const edgePart = edges.map(e => e.source + ">" + e.target + ":" + e.weight + ":" + e.kind).sort().join(",");
+  return nodePart + "|" + edgePart;
+}
+
+function setMode(mode) {
+  document.getElementById("tab-live").classList.toggle("active", mode === "live");
+  document.getElementById("tab-search").classList.toggle("active", mode === "search");
+  document.getElementById("controls-live").style.display = mode === "live" ? "flex" : "none";
+  document.getElementById("controls-search").style.display = mode === "search" ? "flex" : "none";
+  if (mode !== "live") stopLive();
+}
+
+function setStats(text) {
+  document.getElementById("stats").textContent = text;
+}
+
+function showHint(show) {
+  document.getElementById("hint").style.display = show ? "block" : "none";
+}
+
+async function pollLive() {
+  const key = document.getElementById("session-input").value.trim();
+  if (!key) return;
+  try {
+    const resp = await fetch(`${API}/v1/graph/session/${encodeURIComponent(key)}`);
+    if (!resp.ok) throw new Error(`Request failed (${resp.status})`);
+    const data = await resp.json();
+    showHint(false);
+
+    const signature = graphSignature(data.nodes, data.edges);
+    const changed = signature !== liveSignature;
+    liveSignature = signature;
+
+    if (changed) {
+      // Merge additively instead of replacing wholesale: every node
+      // already on screen keeps the SAME object reference (and therefore
+      // the x/y/z position the physics simulation already settled on).
+      // Calling graphData() with brand-new objects for every node on
+      // every poll -- even unchanged ones -- was resetting the force
+      // simulation and reheating it on every tick, which is what made
+      // the whole graph visibly jitter/blink every 1.5s instead of
+      // calmly growing only where something new actually happened.
+      const incomingIds = new Set(data.nodes.map(n => n.id));
+      for (const id of Array.from(liveNodeById.keys())) {
+        if (!incomingIds.has(id)) liveNodeById.delete(id);
+      }
+      data.nodes.forEach(n => {
+        const existing = liveNodeById.get(n.id);
+        if (existing) {
+          existing.role = n.role;
+          existing.sport = n.sport;
+          existing.sport_label = n.sport_label;
+        } else {
+          liveNodeById.set(n.id, { ...n });
+        }
+      });
+      liveLinks = data.edges.map(e => ({ source: e.source, target: e.target, weight: e.weight, kind: e.kind }));
+      Graph.graphData({ nodes: Array.from(liveNodeById.values()), links: liveLinks });
+    }
+
+    setStats(
+      `session ${data.session_key} · ${data.distinct_fixtures_seen} fixtures seen · ` +
+      `${data.nodes.length} nodes shown · ${data.edges.length} edges shown · ` +
+      `basis: ${data.recommendation_reason || "n/a"} · last checked ${new Date().toLocaleTimeString()}` +
+      (changed ? " · updated just now" : " · unchanged")
+    );
+  } catch (err) {
+    setStats(`Couldn't load session graph: ${err.message}`);
+    console.error("pollLive", err);
+  }
+}
+
+function startLive() {
+  stopLive();
+  const key = document.getElementById("session-input").value.trim();
+  if (!key) { setStats("Enter a session key first."); return; }
+  liveNodeById = new Map();
+  liveLinks = [];
+  liveSignature = "";
+  Graph.graphData({ nodes: [], links: [] });
+  document.getElementById("live-status").textContent = "watching — checks every 1.5s, redraws only on change";
+  document.getElementById("live-status").classList.add("on");
+  pollLive();
+  liveTimer = setInterval(pollLive, 1500);
+}
+
+function stopLive() {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = null;
+  document.getElementById("live-status").textContent = "not watching";
+  document.getElementById("live-status").classList.remove("on");
+}
+
+async function runSearch() {
+  const q = document.getElementById("search-input").value.trim();
+  if (!q) return;
+  try {
+    const resp = await fetch(`${API}/v1/graph/search?` + new URLSearchParams({ q, limit: "20" }));
+    if (!resp.ok) throw new Error(`Request failed (${resp.status})`);
+    const data = await resp.json();
+    showHint(false);
+    Graph.graphData({
+      nodes: data.nodes.map(n => ({ ...n })),
+      links: data.edges.map(e => ({ source: e.source, target: e.target, weight: e.weight, kind: e.kind })),
+    });
+    setStats(`query "${data.query}" · ${data.matched_count} fixtures matched · ${data.nodes.length} nodes shown · ${data.edges.length} edges shown`);
+  } catch (err) {
+    setStats(`Search failed: ${err.message}`);
+    console.error("runSearch", err);
+  }
+}
+
+document.getElementById("session-input").addEventListener("keydown", e => { if (e.key === "Enter") startLive(); });
+document.getElementById("search-input").addEventListener("keydown", e => { if (e.key === "Enter") runSearch(); });
+
+const params = new URLSearchParams(window.location.search);
+const prefill = params.get("session");
+if (prefill) {
+  document.getElementById("session-input").value = prefill;
+  startLive();
+}
+</script>
+</body>
+</html>

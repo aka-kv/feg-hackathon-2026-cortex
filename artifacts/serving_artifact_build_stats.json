@@ -1,0 +1,10 @@
+{
+  "rows_raw": 1389754,
+  "casino_rows_dropped": 7903,
+  "timestamp_unparseable_quarantined": 0,
+  "rows_clean": 1381851,
+  "distinct_session_keys": 15314,
+  "distinct_fixture_nodes_in_adjacency": 15191,
+  "distinct_fixture_nodes_in_popularity": 16692,
+  "distinct_fixtures_with_known_sport": 16645
+}

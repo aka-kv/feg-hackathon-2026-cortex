@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PSK Sportsbook</title>
+<style>
+  :root {
+    --brand: #1752bf;
+    --brand-dark: #0f3d8c;
+    --brand-light: #4f8dff;
+    --bg: #0b0e14;
+    --surface: #141924;
+    --surface-2: #1c2330;
+    --surface-3: #232b3a;
+    --border: #2b3444;
+    --text: #f4f6fb;
+    --text-muted: #8a94a6;
+    --green: #1fb15f;
+    --gold: #ffc94a;
+    --danger: #ff5c5c;
+    --radius: 14px;
+    --font: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+
+  /* ---------- Login ---------- */
+  #login-view { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 30% 20%, #16224a 0%, var(--bg) 60%); }
+  .login-card { width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 40px 36px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+  .login-brand { text-align: center; margin-bottom: 28px; }
+  .login-brand .mark { font-size: 30px; font-weight: 800; letter-spacing: -.02em;
+    background: linear-gradient(135deg, var(--brand-light), var(--brand)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .login-brand .tag { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; }
+  .field input { width: 100%; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 14px; outline: none; transition: border-color .15s; }
+  .field input:focus { border-color: var(--brand-light); }
+  .btn { width: 100%; padding: 13px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: transform .1s, filter .15s; }
+  .btn:active { transform: scale(.98); }
+  .btn-primary { background: linear-gradient(135deg, var(--brand-light), var(--brand)); color: white; margin-top: 6px; }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .login-error { color: var(--danger); font-size: 13px; margin-top: 12px; text-align: center; display: none; }
+  .login-divider { display: flex; align-items: center; gap: 10px; margin: 20px 0 4px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .guest-link { display: block; width: 100%; background: none; border: 1px solid var(--border); color: var(--text-muted);
+    padding: 12px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; transition: border-color .15s, color .15s; }
+  .guest-link:hover { border-color: var(--brand-light); color: var(--text); }
+
+  /* ---------- Login-gate modal (guest checkout) ---------- */
+  #login-modal-overlay { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(5,7,12,.72);
+    backdrop-filter: blur(4px); align-items: center; justify-content: center; }
+  #login-modal-overlay.show { display: flex; }
+  .modal-card { width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+    padding: 30px 30px 26px; box-shadow: 0 24px 60px rgba(0,0,0,.5); position: relative; }
+  .modal-close { position: absolute; top: 14px; right: 14px; background: none; border: none; color: var(--text-muted);
+    font-size: 18px; cursor: pointer; line-height: 1; }
+  .modal-title { font-size: 17px; font-weight: 800; margin: 0 0 4px; }
+  .modal-subtitle { color: var(--text-muted); font-size: 13px; margin: 0 0 22px; }
+
+  /* ---------- App shell ---------- */
+  #app-view { display: none; min-height: 100vh; }
+  header.top-bar { position: sticky; top: 0; z-index: 20; background: rgba(11,14,20,.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 28px; height: 64px; gap: 20px; }
+  header.top-bar .mark { font-size: 20px; font-weight: 800; letter-spacing: -.02em; flex: 0 0 auto;
+    background: linear-gradient(135deg, var(--brand-light), var(--brand)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  nav.main-tabs { display: flex; gap: 4px; flex: 1; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+  nav.main-tabs::-webkit-scrollbar { display: none; }
+  nav.main-tabs button { background: none; border: none; color: var(--text-muted); font-size: 14px; font-weight: 600;
+    padding: 10px 16px; border-radius: 10px; cursor: pointer; transition: background .15s, color .15s; white-space: nowrap; flex: 0 0 auto; }
+  nav.main-tabs button:hover { color: var(--text); background: var(--surface-2); }
+  nav.main-tabs button.active { color: white; background: var(--brand); }
+  .graph-link { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--brand-light); text-decoration: none;
+    border: 1px solid var(--border); padding: 8px 14px; border-radius: 10px; white-space: nowrap; transition: border-color .15s, color .15s; }
+  .graph-link:hover { border-color: var(--brand-light); color: var(--text); }
+  .user-chip { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-muted); flex: 0 0 auto; }
+  .user-chip .avatar { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--brand-light), var(--brand));
+    display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; font-size: 13px; }
+  .logout-link { background: none; border: none; color: var(--text-muted); font-size: 13px; cursor: pointer; text-decoration: underline; }
+
+  main.page { max-width: 1080px; margin: 0 auto; padding: 36px 28px 80px; }
+  .view { display: none; animation: fadein 260ms ease-out; }
+  .view.active { display: block; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .page-title { font-size: 26px; font-weight: 800; margin: 0 0 4px; }
+  .page-subtitle { color: var(--text-muted); font-size: 14px; margin: 0 0 28px; }
+
+  /* ---------- Top picks strip ---------- */
+  .picks-section { margin-bottom: 32px; }
+  .picks-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .picks-head h2 { font-size: 15px; font-weight: 800; margin: 0; }
+  .picks-updated-pill { font-size: 11px; font-weight: 700; color: var(--green); background: rgba(31,177,95,.14);
+    padding: 3px 10px; border-radius: 20px; opacity: 0; transform: translateY(-4px); transition: opacity .25s, transform .25s; }
+  .picks-updated-pill.show { opacity: 1; transform: translateY(0); }
+  .picks-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .pick-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px;
+    transition: transform .15s, border-color .15s, opacity .22s ease, transform .22s ease; cursor: pointer; }
+  .pick-card:hover { transform: translateY(-3px); border-color: var(--brand-light); }
+  .pick-card.pick-leave { opacity: 0; transform: translateY(-10px) scale(.98); pointer-events: none; }
+  .pick-card.pick-enter { opacity: 0; transform: translateY(10px); }
+  .pick-eyebrow-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .pick-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--brand-light); font-weight: 700; }
+  .pick-sport-badge { font-size: 10px; font-weight: 700; color: var(--text-muted); background: var(--surface-2);
+    padding: 2px 9px; border-radius: 10px; white-space: nowrap; }
+  .pick-teams { font-size: 15px; font-weight: 700; line-height: 1.35; }
+  .pick-meta { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
+  .empty-state { color: var(--text-muted); font-size: 14px; padding: 20px 0; text-align: center; }
+  .skel { background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+    background-size: 200% 100%; animation: shimmer 1.3s infinite; border-radius: var(--radius); height: 96px; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  /* ---------- Sport layout: fixtures + bet slip ---------- */
+  .football-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
+  .filters { display: flex; gap: 8px; margin-bottom: 22px; }
+  .filters span { background: var(--surface); border: 1px solid var(--border); padding: 7px 16px; border-radius: 20px;
+    font-size: 13px; color: var(--text-muted); }
+  .filters span.active { background: var(--brand); color: white; border-color: var(--brand); }
+
+  .fixture { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px; margin-bottom: 10px; display: flex; align-items: center; gap: 18px; transition: border-color .4s, background .4s, box-shadow .4s; }
+  .fixture.staged-row { border-color: var(--brand-light); background: linear-gradient(90deg, rgba(79,141,255,.08), transparent); }
+  .fixture.placed { border-color: var(--green); background: linear-gradient(90deg, rgba(31,177,95,.08), transparent); }
+  .fixture.flash-highlight { border-color: var(--brand-light); box-shadow: 0 0 0 3px rgba(79,141,255,.25); }
+  .fixture .kickoff { flex: 0 0 64px; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+  .fixture .teams { flex: 1; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .placed-badge { font-size: 11px; font-weight: 700; color: var(--green); background: rgba(31,177,95,.12);
+    padding: 3px 10px; border-radius: 20px; }
+  .odds { display: flex; gap: 8px; }
+  .odd-btn { background: var(--surface-3); border: 1px solid var(--border); color: var(--text); border-radius: 10px;
+    padding: 8px 16px; font-size: 13px; font-weight: 700; min-width: 64px; text-align: center; cursor: pointer;
+    transition: border-color .15s, background .15s, transform .1s; }
+  .odd-btn .lbl { display: block; font-size: 10px; color: var(--text-muted); font-weight: 500; margin-bottom: 2px; }
+  .odd-btn:hover { border-color: var(--brand-light); background: #1a2740; }
+  .odd-btn:active { transform: scale(.95); }
+  .odd-btn.staged { background: var(--brand-light); border-color: var(--brand-light); color: white; }
+  .odd-btn.staged .lbl { color: rgba(255,255,255,.75); }
+  .odd-btn.chosen { background: var(--green); border-color: var(--green); color: white; }
+  .odd-btn.chosen .lbl { color: rgba(255,255,255,.75); }
+
+  /* ---------- Bet slip (add-to-cart + checkout) ---------- */
+  .betslip { position: sticky; top: 84px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; }
+  .betslip-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .betslip-head h2 { font-size: 15px; font-weight: 800; margin: 0; }
+  .betslip-count { font-size: 12px; font-weight: 700; color: var(--text-muted); background: var(--surface-2);
+    padding: 3px 10px; border-radius: 20px; }
+  .betslip-list { display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto; margin-bottom: 14px; }
+  .slip-empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 24px 6px; }
+  .slip-entry { position: relative; background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--brand-light);
+    border-radius: 10px; padding: 12px 30px 12px 14px; animation: slipIn .28s ease-out; }
+  @keyframes slipIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+  .slip-remove { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 50%; border: none;
+    background: var(--surface-3); color: var(--text-muted); font-size: 14px; line-height: 1; cursor: pointer; }
+  .slip-remove:hover { background: var(--danger); color: white; }
+  .slip-teams { font-size: 13px; font-weight: 700; padding-right: 6px; }
+  .slip-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+  .slip-outcome { font-size: 11px; font-weight: 700; color: var(--text-muted); }
+  .slip-odds { font-size: 13px; font-weight: 800; color: var(--brand-light); }
+  .checkout-btn { background: linear-gradient(135deg, #29c46f, var(--green)); color: white; }
+  .checkout-btn:disabled { opacity: .6; cursor: default; }
+
+  .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0;
+    background: var(--surface-3); border: 1px solid var(--green); color: var(--text); padding: 12px 22px; border-radius: 12px;
+    font-size: 13px; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.4); transition: transform .2s, opacity .2s; z-index: 50; }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+  footer.site-footer { border-top: 1px solid var(--border); margin-top: 40px; padding: 18px 28px;
+    color: var(--text-muted); font-size: 11px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="login-view">
+  <div class="login-card">
+    <div class="login-brand"><div class="mark">PSK</div><div class="tag">Sign in to your account</div></div>
+    <div class="field"><label>Username</label><input id="username" type="text" autocomplete="username" /></div>
+    <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" /></div>
+    <button class="btn btn-primary" onclick="doLogin()">Sign in</button>
+    <div class="login-error" id="login-error"></div>
+    <div class="login-divider">or</div>
+    <button class="guest-link" onclick="browseAsGuest()">Continue browsing without signing in</button>
+  </div>
+</div>
+
+<div id="login-modal-overlay">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeLoginModal()">&times;</button>
+    <div class="modal-title">Sign in to place your bet</div>
+    <div class="modal-subtitle">Your picks and recommendations carry over exactly as they are — nothing is lost.</div>
+    <div class="field"><label>Username</label><input id="modal-username" type="text" autocomplete="username" /></div>
+    <div class="field"><label>Password</label><input id="modal-password" type="password" autocomplete="current-password" /></div>
+    <button class="btn btn-primary" onclick="submitModalLogin()">Sign in &amp; place bet</button>
+    <div class="login-error" id="modal-login-error"></div>
+  </div>
+</div>
+
+<div id="app-view">
+  <header class="top-bar">
+    <div class="mark">PSK</div>
+    <nav class="main-tabs" id="main-tabs">
+      <button data-tab="home" class="active" onclick="showTab('home')">Home</button>
+    </nav>
+    <a class="graph-link" id="graph-link" href="/graph.html" target="_blank" rel="noopener">Graph Explorer ↗</a>
+    <div class="user-chip">
+      <div class="avatar" id="user-avatar"></div>
+      <span id="user-name"></span>
+      <button class="logout-link" onclick="doLogout()">Sign out</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <section id="view-home" class="view active">
+      <h1 class="page-title">Home</h1>
+      <p class="page-subtitle">Personalised for you based on this session — refreshes automatically as you bet, across every sport.</p>
+      <div class="picks-section">
+        <div class="picks-head">
+          <h2 id="home-picks-title">Top picks</h2>
+          <span class="picks-updated-pill" id="home-picks-pill">Updated</span>
+        </div>
+        <div id="home-picks-skeleton" class="picks-strip">
+          <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+        </div>
+        <div id="home-picks-strip" class="picks-strip"></div>
+      </div>
+    </section>
+
+    <section id="view-sport" class="view">
+      <h1 class="page-title" id="sport-title">Football</h1>
+      <p class="page-subtitle">Today's fixtures</p>
+
+      <div class="picks-section">
+        <div class="picks-head">
+          <h2 id="picks-title">Top picks</h2>
+          <span class="picks-updated-pill" id="picks-updated-pill">Updated</span>
+        </div>
+        <div id="picks-skeleton" class="picks-strip">
+          <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+        </div>
+        <div id="picks-strip" class="picks-strip"></div>
+      </div>
+
+      <div class="football-layout">
+        <div class="fixtures-col">
+          <div class="filters"><span class="active">Today</span><span>Live</span><span>Tomorrow</span></div>
+          <div id="fixture-list"></div>
+        </div>
+        <aside class="betslip">
+          <div class="betslip-head">
+            <h2>Bet slip</h2>
+            <span class="betslip-count" id="betslip-count">0</span>
+          </div>
+          <div class="betslip-list" id="betslip-list">
+            <div class="slip-empty">No bets added yet — click any odds button to add it here.</div>
+          </div>
+          <button class="btn checkout-btn" id="checkout-btn" style="display:none" onclick="checkout()">Checkout</button>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">Prototype demo · No real money is used · Match names shown are illustrative</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = "http://127.0.0.1:8000";
+let sessionKey = null;
+let isAuthenticated = false;
+let sportsList = [];
+let sportLabelMap = new Map();
+let currentSport = null;
+let pinnedTargetFixtures = [];
+let pinnedTargetSport = null;
+let stagedLegs = [];
+let picksState = {};
+
+// Fallback pool only, used if /v1/sport-name-pools fails to load or a sport
+// code has no real pool at all -- normally every sport draws from its own
+// real match-name pool (see sportNamePools below), sourced from real
+// SB_Player.csv/EPS_Offers.csv data, not this generic placeholder list.
+const FALLBACK_TEAM_POOL = ["Dinamo", "Hajduk", "Rijeka", "Osijek", "Gorica", "Varazdin", "Istra", "Slaven Belupo", "Sibenik", "Lokomotiva", "Cibalia", "Inter Zapresic"];
+const FALLBACK_POOL = [];
+for (let i = 0; i < FALLBACK_TEAM_POOL.length; i++) {
+  for (let j = 0; j < FALLBACK_TEAM_POOL.length; j++) {
+    if (i !== j) FALLBACK_POOL.push(`${FALLBACK_TEAM_POOL[i]} vs ${FALLBACK_TEAM_POOL[j]}`);
+  }
+}
+
+// sport code -> real match-name pool (build_sport_name_pools.py), fetched
+// once at login. sport code -> Map(fixtureId -> assigned name), built
+// lazily per sport so every sport draws from ITS OWN real names instead of
+// one shared pool (the bug: tennis/basketball showing football club names).
+let sportNamePools = {};
+const fixtureNamesBySport = new Map();
+function nameFor(fixtureId, sportCode) {
+  if (typeof fixtureId !== "string" || !fixtureId) return "Unavailable fixture";
+  const key = sportCode || "__unknown__";
+  if (!fixtureNamesBySport.has(key)) fixtureNamesBySport.set(key, new Map());
+  const namesForSport = fixtureNamesBySport.get(key);
+  if (!namesForSport.has(fixtureId)) {
+    const pool = (sportNamePools[sportCode] && sportNamePools[sportCode].length) ? sportNamePools[sportCode] : FALLBACK_POOL;
+    namesForSport.set(fixtureId, pool[namesForSport.size % pool.length]);
+  }
+  return namesForSport.get(fixtureId);
+}
+function oddsFor(fixtureId, slot) {
+  let h = 0;
+  const s = (fixtureId || "") + "|" + slot;
+  for (let i = 0; i < s.length; i++) h = (h * 17 + s.charCodeAt(i)) >>> 0;
+  return (1.4 + (h % 300) / 100).toFixed(2);
+}
+function kickoffFor(fixtureId) {
+  const m = Math.abs((fixtureId || "").length * 7) % 60;
+  return `19:${m.toString().padStart(2, "0")}`;
+}
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast._h);
+  toast._h = setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+async function fetchJSON(url, options) {
+  const resp = await fetch(url, options);
+  if (!resp.ok) throw new Error(`Request failed (${resp.status})`);
+  return resp.json();
+}
+
+async function doLogin() {
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+  const errEl = document.getElementById("login-error");
+  errEl.style.display = "none";
+  try {
+    const body = await fetchJSON(API + "/v1/auth/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    sessionKey = body.session_key;
+    isAuthenticated = true;
+    pinnedTargetFixtures = body.target_fixtures || [];
+    pinnedTargetSport = body.target_sport || null;
+    document.getElementById("user-name").textContent = body.display_name;
+    document.getElementById("user-avatar").textContent = body.display_name.charAt(0).toUpperCase();
+    document.getElementById("graph-link").href = "/graph.html?session=" + encodeURIComponent(sessionKey);
+    document.getElementById("login-view").style.display = "none";
+    document.getElementById("app-view").style.display = "block";
+    await Promise.all([initSportsNav(), loadSportNamePools()]);
+    await showTab("home");
+  } catch (err) {
+    errEl.textContent = "Invalid username or password.";
+    errEl.style.display = "block";
+  }
+}
+
+// Browse everything -- switch sports, stage bets, watch recommendations
+// update -- with NO login at all. The gate only appears at Checkout (see
+// checkout()), and the exact same session_key keeps accumulating signal
+// across that gate, so nothing about the recommendation resets on login.
+async function browseAsGuest() {
+  const body = await fetchJSON(API + "/v1/login", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ player_id: "", seed_recent_fixtures: 0 }),
+  });
+  sessionKey = body.session_key;
+  isAuthenticated = false;
+  pinnedTargetFixtures = [];
+  pinnedTargetSport = null;
+  document.getElementById("user-name").textContent = "Guest";
+  document.getElementById("user-avatar").textContent = "G";
+  document.getElementById("graph-link").href = "/graph.html?session=" + encodeURIComponent(sessionKey);
+  document.getElementById("login-view").style.display = "none";
+  document.getElementById("app-view").style.display = "block";
+  await Promise.all([initSportsNav(), loadSportNamePools()]);
+  await showTab("home");
+}
+
+function openLoginModal() {
+  document.getElementById("login-modal-overlay").classList.add("show");
+}
+
+function closeLoginModal() {
+  document.getElementById("login-modal-overlay").classList.remove("show");
+  document.getElementById("modal-username").value = "";
+  document.getElementById("modal-password").value = "";
+  document.getElementById("modal-login-error").style.display = "none";
+}
+
+async function submitModalLogin() {
+  const username = document.getElementById("modal-username").value.trim();
+  const password = document.getElementById("modal-password").value;
+  const errEl = document.getElementById("modal-login-error");
+  errEl.style.display = "none";
+  try {
+    // Used for credential verification only -- deliberately keep using the
+    // guest sessionKey already in play (with its accumulated click
+    // history) rather than switching to the session_key this endpoint
+    // returns, which would silently reset the recommendation signal.
+    const body = await fetchJSON(API + "/v1/auth/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    isAuthenticated = true;
+    document.getElementById("user-name").textContent = body.display_name;
+    document.getElementById("user-avatar").textContent = body.display_name.charAt(0).toUpperCase();
+    closeLoginModal();
+    toast(`Signed in as ${body.display_name}`);
+    await checkout();
+  } catch (err) {
+    errEl.textContent = "Invalid username or password.";
+    errEl.style.display = "block";
+  }
+}
+
+function doLogout() {
+  sessionKey = null;
+  isAuthenticated = false;
+  currentSport = null;
+  pinnedTargetFixtures = [];
+  pinnedTargetSport = null;
+  stagedLegs = [];
+  picksState = {};
+  fixtureNamesBySport.clear();
+  document.getElementById("username").value = "";
+  document.getElementById("password").value = "";
+  document.getElementById("betslip-list").innerHTML = '<div class="slip-empty">No bets added yet — click any odds button to add it here.</div>';
+  document.getElementById("betslip-count").textContent = "0";
+  document.getElementById("checkout-btn").style.display = "none";
+  document.getElementById("picks-strip").innerHTML = "";
+  document.getElementById("home-picks-strip").innerHTML = "";
+  document.getElementById("app-view").style.display = "none";
+  document.getElementById("login-view").style.display = "flex";
+}
+
+async function loadSportNamePools() {
+  try {
+    sportNamePools = await fetchJSON(API + "/v1/sport-name-pools");
+  } catch (err) {
+    console.error("loadSportNamePools", err);
+    sportNamePools = {};
+  }
+}
+
+async function initSportsNav() {
+  const data = await fetchJSON(API + "/v1/sports");
+  sportsList = data.sports || [];
+  sportLabelMap = new Map(sportsList.map(s => [s.code, s.label]));
+  const nav = document.getElementById("main-tabs");
+  nav.querySelectorAll("button[data-sport-tab]").forEach(b => b.remove());
+  sportsList.forEach(s => {
+    const btn = document.createElement("button");
+    btn.textContent = s.label;
+    btn.dataset.tab = s.code;
+    btn.dataset.sportTab = "1";
+    btn.addEventListener("click", () => showTab(s.code));
+    nav.appendChild(btn);
+  });
+}
+
+function setActiveTabButton(tab) {
+  document.querySelectorAll("#main-tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+}
+
+async function showTab(tab) {
+  setActiveTabButton(tab);
+  if (tab === "home") {
+    currentSport = null;
+    document.getElementById("view-home").classList.add("active");
+    document.getElementById("view-sport").classList.remove("active");
+    await loadHomePicks();
+  } else {
+    currentSport = tab;
+    document.getElementById("view-home").classList.remove("active");
+    document.getElementById("view-sport").classList.add("active");
+    document.getElementById("sport-title").textContent = sportLabelMap.get(tab) || tab;
+    await Promise.all([renderFixturesForSport(tab), loadSportPicks(tab)]);
+  }
+}
+
+function sportBadge(code) {
+  if (!code) return "";
+  const label = sportLabelMap.get(code) || code;
+  return `<span class="pick-sport-badge">${label}</span>`;
+}
+
+function flashFixture(fixtureId) {
+  const row = document.querySelector(`.fixture[data-fixture-id="${CSS.escape(fixtureId)}"]`);
+  if (!row) return;
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  row.classList.add("flash-highlight");
+  setTimeout(() => row.classList.remove("flash-highlight"), 1200);
+}
+
+async function renderFixturesForSport(sport) {
+  const list = document.getElementById("fixture-list");
+  list.innerHTML = `<div class="empty-state">Loading fixtures…</div>`;
+  let fids = [];
+  try {
+    const params = new URLSearchParams({ limit: "12", sport });
+    const data = await fetchJSON(API + "/v1/browse-fixtures?" + params.toString());
+    fids = data.fixtures || [];
+  } catch (err) {
+    list.innerHTML = `<div class="empty-state">Couldn't load fixtures.</div>`;
+    console.error("renderFixturesForSport", err);
+    return;
+  }
+  if (sport === pinnedTargetSport && pinnedTargetFixtures.length) {
+    const rest = fids.filter(f => !pinnedTargetFixtures.includes(f));
+    fids = [...pinnedTargetFixtures, ...rest].slice(0, 12);
+  }
+  list.innerHTML = "";
+  if (fids.length === 0) {
+    list.innerHTML = `<div class="empty-state">No fixtures available for this sport right now.</div>`;
+    return;
+  }
+  fids.forEach(fid => list.appendChild(buildFixtureRow(fid, sport)));
+  // Re-apply staged/placed visual state for any fixture already acted on
+  // this session, in case the same fixture reappears after a tab revisit.
+  stagedLegs.forEach(leg => {
+    const row = list.querySelector(`.fixture[data-fixture-id="${CSS.escape(leg.fixtureId)}"]`);
+    if (!row) return;
+    row.classList.add("staged-row");
+    row.querySelector(`.odd-btn[data-outcome="${leg.outcome}"]`)?.classList.add("staged");
+  });
+}
+
+function buildFixtureRow(fid, sport) {
+  const row = document.createElement("div");
+  row.className = "fixture";
+  row.dataset.fixtureId = fid;
+  row.dataset.sport = sport || "";
+  row.innerHTML = `
+    <div class="kickoff">Today<br/>${kickoffFor(fid)}</div>
+    <div class="teams">${nameFor(fid, sport)}</div>
+    <div class="odds">
+      <button class="odd-btn" data-outcome="1"><span class="lbl">1</span>${oddsFor(fid, 1)}</button>
+      <button class="odd-btn" data-outcome="X"><span class="lbl">X</span>${oddsFor(fid, 2)}</button>
+      <button class="odd-btn" data-outcome="2"><span class="lbl">2</span>${oddsFor(fid, 3)}</button>
+    </div>`;
+  row.querySelectorAll(".odd-btn").forEach(btn => {
+    btn.addEventListener("click", () => toggleStage(row, btn));
+  });
+  return row;
+}
+
+/* ---------- Bet slip: add-to-cart, remove, checkout ---------- */
+/* Every interaction that touches a real fixture -- staging OR unstaging --
+   immediately sends the real betslip_add_bet event and refreshes picks.
+   "Opened" (betslip_add_bet) is the real signal the recommendation engine
+   keys off of (see rank.py's viewed_fixtures) -- it does not wait for
+   checkout, so recommendations must not either. Checkout only fires
+   betslip_placed_bet (the actual "closed" event) on top of that. */
+
+async function sendAddBetEvent(fixtureId) {
+  try {
+    await fetchJSON(API + "/v1/events", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_key: sessionKey, event_name: "betslip_add_bet", fixture_id: fixtureId, platform: "web", protection_state: "allowed" }),
+    });
+  } catch (err) {
+    console.error("sendAddBetEvent", err);
+  }
+}
+
+async function refreshAfterInteraction() {
+  if (currentSport) await loadSportPicks(currentSport, { animate: true });
+}
+
+async function toggleStage(row, btn) {
+  const fixtureId = row.dataset.fixtureId;
+  const sport = row.dataset.sport || currentSport;
+  const outcome = btn.dataset.outcome;
+  const existingIdx = stagedLegs.findIndex(l => l.fixtureId === fixtureId);
+  const alreadyThisOutcome = existingIdx !== -1 && stagedLegs[existingIdx].outcome === outcome;
+
+  if (alreadyThisOutcome) {
+    stagedLegs.splice(existingIdx, 1);
+    row.querySelectorAll(".odd-btn").forEach(b => b.classList.remove("staged"));
+    row.classList.remove("staged-row");
+  } else {
+    if (existingIdx !== -1) stagedLegs.splice(existingIdx, 1);
+    stagedLegs.push({ fixtureId, outcome, sport });
+    row.querySelectorAll(".odd-btn").forEach(b => b.classList.remove("staged"));
+    btn.classList.add("staged");
+    row.classList.add("staged-row");
+    await sendAddBetEvent(fixtureId);
+  }
+  renderSlip();
+  await refreshAfterInteraction();
+}
+
+async function removeStagedLeg(fixtureId) {
+  stagedLegs = stagedLegs.filter(l => l.fixtureId !== fixtureId);
+  const row = document.querySelector(`.fixture[data-fixture-id="${CSS.escape(fixtureId)}"]`);
+  if (row) {
+    row.querySelectorAll(".odd-btn").forEach(b => b.classList.remove("staged"));
+    row.classList.remove("staged-row");
+  }
+  renderSlip();
+  await refreshAfterInteraction();
+}
+
+function renderSlip() {
+  const list = document.getElementById("betslip-list");
+  const countEl = document.getElementById("betslip-count");
+  const checkoutBtn = document.getElementById("checkout-btn");
+  countEl.textContent = stagedLegs.length;
+  checkoutBtn.style.display = stagedLegs.length ? "block" : "none";
+  checkoutBtn.textContent = isAuthenticated ? "Checkout" : "Sign in to place bets";
+  if (stagedLegs.length === 0) {
+    list.innerHTML = '<div class="slip-empty">No bets added yet — click any odds button to add it here.</div>';
+    return;
+  }
+  list.innerHTML = "";
+  stagedLegs.forEach(leg => {
+    const label = leg.outcome === "1" ? "Home" : leg.outcome === "2" ? "Away" : "Draw";
+    const entry = document.createElement("div");
+    entry.className = "slip-entry";
+    entry.innerHTML = `
+      <button class="slip-remove" title="Remove">&times;</button>
+      <div class="slip-teams">${nameFor(leg.fixtureId, leg.sport)}</div>
+      <div class="slip-meta">
+        <span class="slip-outcome">${label} (${leg.outcome})</span>
+        <span class="slip-odds">${oddsFor(leg.fixtureId, leg.outcome === "1" ? 1 : leg.outcome === "X" ? 2 : 3)}</span>
+      </div>`;
+    entry.querySelector(".slip-remove").addEventListener("click", () => removeStagedLeg(leg.fixtureId));
+    list.appendChild(entry);
+  });
+}
+
+async function checkout() {
+  if (stagedLegs.length === 0) return;
+  // The actual gate: browsing and staging never required login (see
+  // browseAsGuest/toggleStage), but committing a real placed bet does.
+  // The login modal reuses the SAME sessionKey/stagedLegs afterwards, so
+  // nothing about the already-computed recommendation is lost or reset.
+  if (!isAuthenticated) {
+    openLoginModal();
+    return;
+  }
+  const btn = document.getElementById("checkout-btn");
+  btn.disabled = true;
+  btn.textContent = "Placing bets…";
+  const legs = [...stagedLegs];
+  try {
+    for (const leg of legs) {
+      // betslip_add_bet already fired the instant this leg was staged (see
+      // toggleStage) -- checkout only needs to fire the real "closed" event.
+      await fetchJSON(API + "/v1/events", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_key: sessionKey, event_name: "betslip_placed_bet", fixture_id: leg.fixtureId, platform: "web", protection_state: "allowed" }),
+      });
+    }
+    legs.forEach(leg => {
+      const row = document.querySelector(`.fixture[data-fixture-id="${CSS.escape(leg.fixtureId)}"]`);
+      if (!row) return;
+      row.classList.remove("staged-row");
+      row.classList.add("placed");
+      row.querySelectorAll(".odd-btn").forEach(b => b.classList.remove("staged"));
+      row.querySelector(`.odd-btn[data-outcome="${leg.outcome}"]`)?.classList.add("chosen");
+      if (!row.querySelector(".placed-badge")) {
+        row.querySelector(".teams").insertAdjacentHTML("beforeend", '<span class="placed-badge">Bet placed</span>');
+      }
+    });
+    toast(legs.length === 1 ? "Bet placed" : `${legs.length} bets placed`);
+    stagedLegs = [];
+    renderSlip();
+    await refreshAfterInteraction();
+  } catch (err) {
+    console.error("checkout", err);
+    toast("Something went wrong placing your bets.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Checkout";
+  }
+}
+
+/* ---------- Top picks: shared render/animate engine for Home + per-sport ---------- */
+
+function onPickClick(candidate, fid) {
+  if (candidate.sport && candidate.sport !== currentSport) {
+    showTab(candidate.sport).then(() => flashFixture(fid));
+  } else {
+    flashFixture(fid);
+  }
+}
+
+async function refreshPicks(viewKey, url, els, buildCardHtml, opts) {
+  const animate = !!(opts && opts.animate);
+  const { skeleton, strip, title, pill } = els;
+
+  if (!animate) { skeleton.style.display = "grid"; strip.innerHTML = ""; }
+
+  let rec;
+  try {
+    rec = await fetchJSON(url);
+  } catch (err) {
+    skeleton.style.display = "none";
+    strip.innerHTML = `<div class="empty-state">Couldn't load picks right now.</div>`;
+    console.error("refreshPicks", viewKey, err);
+    return;
+  }
+
+  skeleton.style.display = "none";
+
+  if (!rec.allowed || !rec.candidates || rec.candidates.length === 0) {
+    strip.innerHTML = `<div class="empty-state">Nothing to show yet — place a few bets to see personalised picks.</div>`;
+    picksState[viewKey] = "";
+    return;
+  }
+
+  const isPersonalised = (rec.reason || "").startsWith("fixture_cooccurrence");
+  if (title) title.textContent = isPersonalised ? "Top picks for you" : "Popular right now";
+  const fids = rec.candidates.map(c => (c.fixture || "").replace("FIXTURE:", ""));
+  const signature = isPersonalised + "|" + fids.join(",");
+  const prev = picksState[viewKey] || "";
+  const changed = signature !== prev && prev !== "";
+  picksState[viewKey] = signature;
+
+  const buildCards = () => rec.candidates.map(c => {
+    const fid = (c.fixture || "").replace("FIXTURE:", "");
+    const card = document.createElement("div");
+    card.className = "pick-card";
+    card.innerHTML = buildCardHtml(c, fid, isPersonalised);
+    card.addEventListener("click", () => onPickClick(c, fid));
+    return card;
+  });
+
+  if (!changed || strip.children.length === 0) {
+    strip.innerHTML = "";
+    buildCards().forEach(card => strip.appendChild(card));
+    return;
+  }
+
+  // Recommendation genuinely changed: animate the old picks out, then the
+  // new picks in, staggered, so the moment is visibly obvious rather than
+  // a silent content swap.
+  Array.from(strip.children).forEach(card => card.classList.add("pick-leave"));
+  if (pill) pill.classList.add("show");
+  setTimeout(() => {
+    strip.innerHTML = "";
+    const cards = buildCards();
+    cards.forEach((card, i) => {
+      card.classList.add("pick-enter");
+      card.style.transitionDelay = `${i * 90}ms`;
+      strip.appendChild(card);
+    });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      cards.forEach(card => card.classList.remove("pick-enter"));
+    }));
+    if (pill) setTimeout(() => pill.classList.remove("show"), 1800);
+  }, 220);
+}
+
+async function loadHomePicks(opts) {
+  await refreshPicks(
+    "home",
+    API + `/v1/recommend/cached/${encodeURIComponent(sessionKey)}`,
+    {
+      skeleton: document.getElementById("home-picks-skeleton"),
+      strip: document.getElementById("home-picks-strip"),
+      title: document.getElementById("home-picks-title"),
+      pill: document.getElementById("home-picks-pill"),
+    },
+    (c, fid, isPersonalised) => `
+      <div class="pick-eyebrow-row">
+        <span class="pick-eyebrow">${isPersonalised ? "Recommended for you" : "Popular right now"}</span>
+        ${sportBadge(c.sport)}
+      </div>
+      <div class="pick-teams">${nameFor(fid, c.sport)}</div>
+      <div class="pick-meta">Today · ${kickoffFor(fid)}</div>`,
+    opts
+  );
+}
+
+async function loadSportPicks(sport, opts) {
+  await refreshPicks(
+    "sport:" + sport,
+    API + `/v1/recommend/sport/${encodeURIComponent(sessionKey)}/${encodeURIComponent(sport)}`,
+    {
+      skeleton: document.getElementById("picks-skeleton"),
+      strip: document.getElementById("picks-strip"),
+      title: document.getElementById("picks-title"),
+      pill: document.getElementById("picks-updated-pill"),
+    },
+    (c, fid, isPersonalised) => `
+      <div class="pick-eyebrow-row"><span class="pick-eyebrow">${isPersonalised ? "Recommended for you" : "Popular right now"}</span></div>
+      <div class="pick-teams">${nameFor(fid, sport)}</div>
+      <div class="pick-meta">Today · ${kickoffFor(fid)}</div>`,
+    opts
+  );
+}
+</script>
+</body>
+</html>
