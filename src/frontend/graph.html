@@ -7,91 +7,166 @@
 <script src="https://unpkg.com/3d-force-graph"></script>
 <style>
   :root {
-    --brand: #1752bf; --brand-light: #4f8dff; --bg: #0b0e14; --surface: #141924; --surface-2: #1c2330;
-    --border: #2b3444; --text: #f4f6fb; --text-muted: #8a94a6; --green: #1fb15f; --gold: #ffc94a; --danger: #ff5c5c;
+    --brand: #1752bf; --brand-light: #4f8dff; --bg: #0b0e14; --surface: #141924; --surface-2: #1c2330; --surface-3: #232b3a;
+    --border: #2b3444; --text: #f4f6fb; --text-muted: #8a94a6; --green: #1fb15f; --gold: #ffc94a; --purple: #c77dff; --danger: #ff5c5c;
     --font: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); height: 100vh; overflow: hidden; }
-  header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-  header .mark { font-size: 18px; font-weight: 800; letter-spacing: -.02em;
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); overflow: hidden; -webkit-font-smoothing: antialiased; }
+
+  header.top-bar {
+    position: relative; z-index: 30;
+    background: rgba(11,14,20,.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 18px; padding: 16px 28px; flex-wrap: wrap;
+  }
+  header.top-bar .mark { font-size: 22px; font-weight: 800; letter-spacing: -.02em; flex: 0 0 auto;
     background: linear-gradient(135deg, var(--brand-light), var(--brand)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  header .subtitle { font-size: 12px; color: var(--text-muted); }
-  .mode-tabs { display: flex; gap: 6px; margin-left: auto; }
-  .mode-tabs button { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); font-size: 12px;
-    font-weight: 700; padding: 7px 14px; border-radius: 20px; cursor: pointer; }
-  .mode-tabs button.active { background: var(--brand); color: white; border-color: var(--brand); }
-  .controls { padding: 12px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; background: var(--surface); }
-  .controls input { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px;
-    padding: 9px 12px; font-size: 13px; min-width: 260px; outline: none; }
-  .controls input:focus { border-color: var(--brand-light); }
-  .controls button { background: var(--brand); color: white; border: none; border-radius: 8px; padding: 9px 16px;
-    font-size: 13px; font-weight: 700; cursor: pointer; }
-  .controls button:hover { filter: brightness(1.1); }
-  .controls .live-status { font-size: 12px; color: var(--text-muted); margin-left: 4px; }
-  .controls .live-status.on { color: var(--green); font-weight: 700; }
-  .legend { display: flex; gap: 14px; margin-left: auto; font-size: 11px; color: var(--text-muted); }
-  .legend span { display: inline-flex; align-items: center; gap: 5px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-  #stats { padding: 8px 24px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
-  #graph-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; }
-  .panel-wrap { position: relative; z-index: 1; }
-  .hint { padding: 40px 24px; color: var(--text-muted); font-size: 13px; text-align: center; }
+  header.top-bar .subtitle { font-size: 13px; color: var(--text-muted); }
+
+  .mode-tabs { display: flex; gap: 4px; margin-left: auto; background: var(--surface-2);
+    padding: 4px; border-radius: 14px; border: 1px solid var(--border); flex: 0 0 auto; }
+  .mode-tabs button { background: none; border: none; color: var(--text-muted); font-size: 13px; font-weight: 700;
+    padding: 9px 18px; border-radius: 10px; cursor: pointer; transition: background .15s, color .15s; white-space: nowrap; }
+  .mode-tabs button:hover { color: var(--text); }
+  .mode-tabs button.active { background: var(--brand); color: white; }
+
+  .controls-bar { position: relative; z-index: 30; padding: 14px 28px; border-bottom: 1px solid var(--border);
+    background: var(--surface); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .controls-bar input { background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 11px 16px; font-size: 14px; min-width: 320px; outline: none; transition: border-color .15s; }
+  .controls-bar input:focus { border-color: var(--brand-light); }
+  .btn { border: none; border-radius: 10px; padding: 11px 20px; font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: filter .15s, transform .1s; }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: linear-gradient(135deg, var(--brand-light), var(--brand)); color: white; }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--brand-light); }
+
+  .live-status { font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .live-status .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex: 0 0 auto; }
+  .live-status.on { color: var(--green); }
+  .live-status.on .pulse { background: var(--green); animation: pulse 1.6s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(31,177,95,.55); }
+    70% { box-shadow: 0 0 0 9px rgba(31,177,95,0); }
+    100% { box-shadow: 0 0 0 0 rgba(31,177,95,0); }
+  }
+
+  #graph-container { position: absolute; inset: 0; z-index: 0; }
+
+  /* Floating legend -- the one thing that must read clearly from across a
+     room on a projector, so oversized swatches/text and a high-contrast,
+     always-visible card rather than a thin inline row buried in a toolbar. */
+  .legend-panel {
+    position: fixed; left: 28px; bottom: 28px; z-index: 20;
+    background: rgba(18,23,34,.92); backdrop-filter: blur(12px);
+    border: 1px solid var(--border); border-radius: 18px; padding: 20px 26px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.5); min-width: 300px;
+  }
+  .legend-panel h3 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--text-muted); font-weight: 800; }
+  .legend-group { margin-bottom: 18px; }
+  .legend-group:last-child { margin-bottom: 0; }
+  .legend-row { display: flex; align-items: center; gap: 14px; font-size: 16px; font-weight: 600; padding: 6px 0; }
+  .legend-dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; }
+  .legend-line { width: 26px; height: 4px; border-radius: 2px; flex: 0 0 auto; }
+
+  .stats-pill { position: fixed; right: 28px; z-index: 20; max-width: 360px;
+    background: rgba(18,23,34,.92); backdrop-filter: blur(12px); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px 18px; font-size: 13px; color: var(--text-muted); line-height: 1.6;
+    box-shadow: 0 24px 60px rgba(0,0,0,.4); display: none; }
+  .stats-pill.show { display: block; }
+  .stats-pill strong { color: var(--text); }
+
+  .hint-card { position: fixed; top: 52%; left: 50%; transform: translate(-50%, -50%); z-index: 15;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 34px 42px;
+    max-width: 460px; text-align: center; color: var(--text-muted); font-size: 14px; line-height: 1.65;
+    box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+  .hint-card .hint-title { color: var(--text); font-size: 16px; font-weight: 700; margin-bottom: 10px; }
 </style>
 </head>
 <body>
 
-<div class="panel-wrap">
-  <header>
-    <div class="mark">PSK</div>
-    <div class="subtitle">Session intent graph explorer — real fixture co-occurrence data, not a mockup</div>
-    <div class="mode-tabs">
-      <button id="tab-live" class="active" onclick="setMode('live')">Live session</button>
-      <button id="tab-search" onclick="setMode('search')">Search full graph</button>
-    </div>
-  </header>
-
-  <div class="controls" id="controls-live">
-    <input id="session-input" type="text" placeholder="session_key, e.g. verified-abc123::playerid" />
-    <button onclick="startLive()">Watch live</button>
-    <button onclick="stopLive()" style="background:var(--surface-3,#232b3a); color:var(--text-muted);">Stop</button>
-    <span class="live-status" id="live-status">not watching</span>
-    <div class="legend">
-      <span><i class="dot" style="background:#4f8dff"></i>Seen this session</span>
-      <span><i class="dot" style="background:#1fb15f"></i>Recommended next</span>
-      <span><i class="dot" style="background:#5b6577"></i>Neighbor (context)</span>
-      <span><i style="display:inline-block;width:14px;height:2px;background:#ffc94a;"></i>This session's real click order</span>
-      <span><i style="display:inline-block;width:14px;height:2px;background:#4f8dff;opacity:.5;"></i>Historical co-occurrence</span>
-    </div>
+<header class="top-bar">
+  <div class="mark">PSK</div>
+  <div class="subtitle">Session Intent Graph Explorer — real fixture co-occurrence data, not a mockup</div>
+  <div class="mode-tabs">
+    <button id="tab-live" class="active" onclick="setMode('live')">Live Session</button>
+    <button id="tab-search" onclick="setMode('search')">Search Full Graph</button>
   </div>
+</header>
 
-  <div class="controls" id="controls-search" style="display:none">
-    <input id="search-input" type="text" placeholder="Search fixture id or sport (e.g. tenis, nogomet, 1ut-0qa)" />
-    <button onclick="runSearch()">Search</button>
-    <div class="legend">
-      <span><i class="dot" style="background:#ffc94a"></i>Matched fixture</span>
-      <span><i class="dot" style="background:#5b6577"></i>Neighbor (context)</span>
-    </div>
-  </div>
+<div class="controls-bar" id="controls-live">
+  <input id="session-input" type="text" placeholder="Session key, e.g. verified-abc123::playerid" />
+  <button class="btn btn-primary" onclick="startLive()">Watch Live</button>
+  <button class="btn btn-ghost" onclick="stopLive()">Stop</button>
+  <span class="live-status" id="live-status"><span class="pulse"></span><span id="live-status-text">Not watching</span></span>
+</div>
 
-  <div id="stats">Nothing loaded yet.</div>
-  <div id="data-source-note" style="padding: 6px 24px 10px; font-size: 11px; color: var(--text-muted);">
-    Every node is a real fixture_id from the raw event log; every edge is a real co-occurrence count from
-    <code>artifacts/fixture_adjacency.json</code>. Hover any node to see its real ID and sport.
-  </div>
+<div class="controls-bar" id="controls-search" style="display:none">
+  <input id="search-input" type="text" placeholder="Search fixture ID or sport (e.g. tenis, nogomet, 1ut-0qa)" />
+  <button class="btn btn-primary" onclick="runSearch()">Search</button>
 </div>
 
 <div id="graph-container"></div>
-<div class="hint" id="hint">Enter a session key on the left and click "Watch live" to see that session's real fixture graph grow as bets are placed — or switch to "Search full graph" to look up any real fixture or sport across the whole dataset.</div>
+
+<div class="legend-panel">
+  <div class="legend-group" id="legend-nodes"></div>
+  <div class="legend-group" id="legend-edges"></div>
+</div>
+
+<div class="stats-pill" id="stats-pill"></div>
+
+<div class="hint-card" id="hint">
+  <div class="hint-title">Nothing loaded yet</div>
+  Enter a session key above and click <b>Watch Live</b> to see that session's real fixture graph grow as bets are placed —
+  or switch to <b>Search Full Graph</b> to look up any real fixture or sport across the whole dataset.
+</div>
 
 <script>
 const API = "http://127.0.0.1:8000";
-const ROLE_COLORS = { seen: "#4f8dff", recommended: "#1fb15f", neighbor: "#5b6577", match: "#ffc94a" };
-const ROLE_SIZE = { seen: 6, recommended: 7, neighbor: 2.4, match: 6 };
+const ROLE_COLORS = { seen: "#4f8dff", recommended: "#1fb15f", neighbor: "#5b6577", match: "#ffc94a", interaction: "#c77dff" };
+const ROLE_SIZE = { seen: 6, recommended: 7, neighbor: 2.4, match: 6, interaction: 4 };
+
+const LEGEND_NODES = {
+  live: [
+    { color: "#4f8dff", label: "Fixture seen this session" },
+    { color: "#c77dff", label: "Interaction node (screen/action)" },
+    { color: "#1fb15f", label: "Recommended next" },
+    { color: "#5b6577", label: "Neighbor (context)" },
+  ],
+  search: [
+    { color: "#ffc94a", label: "Matched fixture" },
+    { color: "#5b6577", label: "Neighbor (context)" },
+  ],
+};
+const LEGEND_EDGES = {
+  live: [
+    { color: "#ffc94a", label: "This session's real walk order" },
+    { color: "rgba(79,141,255,0.6)", label: "Historical co-occurrence" },
+  ],
+  search: [
+    { color: "rgba(79,141,255,0.6)", label: "Historical co-occurrence" },
+  ],
+};
+
+function renderLegend(mode) {
+  const nodesEl = document.getElementById("legend-nodes");
+  const edgesEl = document.getElementById("legend-edges");
+  nodesEl.innerHTML = `<h3>Nodes</h3>` + LEGEND_NODES[mode].map(
+    l => `<div class="legend-row"><span class="legend-dot" style="background:${l.color}"></span>${l.label}</div>`
+  ).join("");
+  edgesEl.innerHTML = `<h3>Connections</h3>` + LEGEND_EDGES[mode].map(
+    l => `<div class="legend-row"><span class="legend-line" style="background:${l.color}"></span>${l.label}</div>`
+  ).join("");
+}
 
 const Graph = ForceGraph3D()(document.getElementById("graph-container"))
   .backgroundColor("#0b0e14")
-  .nodeLabel(n => `<div style="font-size:12px"><b>${n.sport_label || n.sport || "Unknown sport"}</b><br/>${n.id}<br/>role: ${n.role}</div>`)
+  .nodeLabel(n => `<div style="font-size:12px"><b>${n.kind === "fixture" ? (n.sport_label || n.sport || "Unknown sport") : "Interaction node"}</b><br/>${n.id}<br/>role: ${n.role} · kind: ${n.kind}</div>`)
   .nodeColor(n => ROLE_COLORS[n.role] || "#8a94a6")
   .nodeVal(n => ROLE_SIZE[n.role] || 2)
   // Two visually distinct edge kinds, both real: "session_path" is the
@@ -120,12 +195,32 @@ function setMode(mode) {
   document.getElementById("tab-search").classList.toggle("active", mode === "search");
   document.getElementById("controls-live").style.display = mode === "live" ? "flex" : "none";
   document.getElementById("controls-search").style.display = mode === "search" ? "flex" : "none";
+  renderLegend(mode);
   if (mode !== "live") stopLive();
+  requestAnimationFrame(positionStatsPill);
 }
 
-function setStats(text) {
-  document.getElementById("stats").textContent = text;
+function setStats(html) {
+  const pill = document.getElementById("stats-pill");
+  pill.innerHTML = html;
+  pill.classList.add("show");
+  positionStatsPill();
 }
+
+// The stats pill sits just below whichever controls bar is currently
+// visible -- measured from the real rendered DOM, not a hardcoded px
+// guess. A fixed top offset previously assumed a header+controls height
+// that didn't hold once the controls bar wrapped onto two lines (e.g. a
+// narrower window), which clipped the pill behind the opaque controls bar
+// above it -- found from a real screenshot, not assumed.
+function positionStatsPill() {
+  const visibleControls = document.getElementById("controls-live").style.display !== "none"
+    ? document.getElementById("controls-live")
+    : document.getElementById("controls-search");
+  const rect = visibleControls.getBoundingClientRect();
+  document.getElementById("stats-pill").style.top = (rect.bottom + 20) + "px";
+}
+window.addEventListener("resize", () => positionStatsPill());
 
 function showHint(show) {
   document.getElementById("hint").style.display = show ? "block" : "none";
@@ -172,10 +267,10 @@ async function pollLive() {
     }
 
     setStats(
-      `session ${data.session_key} · ${data.distinct_fixtures_seen} fixtures seen · ` +
-      `${data.nodes.length} nodes shown · ${data.edges.length} edges shown · ` +
-      `basis: ${data.recommendation_reason || "n/a"} · last checked ${new Date().toLocaleTimeString()}` +
-      (changed ? " · updated just now" : " · unchanged")
+      `<strong>Session:</strong> ${data.session_key}<br/>` +
+      `<strong>${data.distinct_fixtures_seen}</strong> fixtures seen · <strong>${data.nodes.length}</strong> nodes · <strong>${data.edges.length}</strong> edges<br/>` +
+      `Basis: ${data.recommendation_reason || "n/a"}<br/>` +
+      `Last checked ${new Date().toLocaleTimeString()}${changed ? " · updated just now" : " · unchanged"}`
     );
   } catch (err) {
     setStats(`Couldn't load session graph: ${err.message}`);
@@ -191,8 +286,8 @@ function startLive() {
   liveLinks = [];
   liveSignature = "";
   Graph.graphData({ nodes: [], links: [] });
-  document.getElementById("live-status").textContent = "watching — checks every 1.5s, redraws only on change";
   document.getElementById("live-status").classList.add("on");
+  document.getElementById("live-status-text").textContent = "Watching — checks every 1.5s, redraws only on change";
   pollLive();
   liveTimer = setInterval(pollLive, 1500);
 }
@@ -200,8 +295,8 @@ function startLive() {
 function stopLive() {
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = null;
-  document.getElementById("live-status").textContent = "not watching";
   document.getElementById("live-status").classList.remove("on");
+  document.getElementById("live-status-text").textContent = "Not watching";
 }
 
 async function runSearch() {
@@ -216,7 +311,10 @@ async function runSearch() {
       nodes: data.nodes.map(n => ({ ...n })),
       links: data.edges.map(e => ({ source: e.source, target: e.target, weight: e.weight, kind: e.kind })),
     });
-    setStats(`query "${data.query}" · ${data.matched_count} fixtures matched · ${data.nodes.length} nodes shown · ${data.edges.length} edges shown`);
+    setStats(
+      `<strong>Query:</strong> "${data.query}"<br/>` +
+      `<strong>${data.matched_count}</strong> fixtures matched · <strong>${data.nodes.length}</strong> nodes · <strong>${data.edges.length}</strong> edges`
+    );
   } catch (err) {
     setStats(`Search failed: ${err.message}`);
     console.error("runSearch", err);
@@ -225,6 +323,9 @@ async function runSearch() {
 
 document.getElementById("session-input").addEventListener("keydown", e => { if (e.key === "Enter") startLive(); });
 document.getElementById("search-input").addEventListener("keydown", e => { if (e.key === "Enter") runSearch(); });
+
+renderLegend("live");
+positionStatsPill();
 
 const params = new URLSearchParams(window.location.search);
 const prefill = params.get("session");

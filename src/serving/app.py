@@ -294,6 +294,9 @@ class AuthLoginRequest(BaseModel):
     password: str
 
 
+HISTORY_SEED_MAX_FIXTURES = 10
+
+
 @app.post("/v1/auth/login")
 def auth_login(req: AuthLoginRequest):
     account = _DEMO_ACCOUNTS.get(req.username)
@@ -301,9 +304,10 @@ def auth_login(req: AuthLoginRequest):
         raise HTTPException(401, "Invalid username or password")
 
     session_key = f"user-{uuid.uuid4().hex[:8]}::{req.username}"
+    target_session_key = account["target_session_key"]
     target_fixtures: list[str] = []
-    if account["target_session_key"]:
-        session_rows = _raw_events_by_session_player.get(account["target_session_key"])
+    if target_session_key:
+        session_rows = _raw_events_by_session_player.get(target_session_key)
         if session_rows is not None:
             for _, row in session_rows.sort_values("_ts").iterrows():
                 fid = row["fixture_id"]
@@ -312,13 +316,44 @@ def auth_login(req: AuthLoginRequest):
                 if len(target_fixtures) >= 3:
                     break
 
-    # Fresh session, deliberately unseeded -- every fixture "open" the judge
-    # sees happen is a real, live POST /v1/events call, not pre-loaded state.
-    # ensure_session must run before caching -- a session with zero nodes
-    # is a legitimate cold-start state, but the cache write silently no-ops
+    # A returning, identified customer with real account history has no
+    # reason to see generic cold-start popularity -- that's exactly the
+    # thing that should distinguish an existing customer from a brand-new
+    # one. Seed the session with the player's OWN real fixtures from their
+    # OTHER sessions (never other players' data), so Home is already
+    # personalized the instant they log in, before any click in this new
+    # session. Deliberately excludes target_session_key's own rows -- the 3
+    # pinned live-demo fixtures stay unopened, so the live walkthrough (open
+    # them one by one, watch the recommendation refine further) still works
+    # on top of this. A genuinely new visitor (target_session_key=None, e.g.
+    # "newplayer") has no history to seed from and correctly stays cold-start
+    # -- this isn't a special case, it's the same rule with no data to act on.
+    history_seeded_fixtures: list[str] = []
+    if target_session_key:
+        player_id = target_session_key.split("::")[1]
+        player_rows = _raw_events_by_player.get(player_id)
+        if player_rows is not None:
+            raw_session = target_session_key.split("::")[0]
+            other_rows = player_rows[player_rows["session"] != raw_session]
+            for _, row in other_rows.sort_values("_ts", ascending=False).iterrows():
+                fid = row["fixture_id"]
+                if fid and fid not in history_seeded_fixtures and fid not in target_fixtures:
+                    history_seeded_fixtures.append(fid)
+                if len(history_seeded_fixtures) >= HISTORY_SEED_MAX_FIXTURES:
+                    break
+            history_seeded_fixtures.reverse()  # chronological order, oldest of the recent window first
+
+    # ensure_session must run before caching -- a session with zero nodes is
+    # a legitimate cold-start state, but the cache write silently no-ops
     # against a session key that was never created (found by running this
     # exact login -> immediate Home-page-view sequence end to end).
     session_store.ensure_session(session_key, protection_state="allowed")
+    if history_seeded_fixtures:
+        seed_nodes = []
+        for fid in history_seeded_fixtures:
+            seed_nodes.append("SCREEN:prematchDetail")
+            seed_nodes.append(f"FIXTURE:{fid}")
+        session_store.add_nodes(session_key, seed_nodes, protection_state="allowed")
     _, elapsed_ms = _compute_and_cache_recommendation(session_key)
 
     # Which sport the pinned target fixtures actually belong to -- found by
@@ -333,6 +368,7 @@ def auth_login(req: AuthLoginRequest):
     return {
         "session_key": session_key,
         "display_name": account["display_name"],
+        "history_seeded_fixtures": history_seeded_fixtures,
         "target_fixtures": target_fixtures,
         "target_sport": target_sport,
         "recommendation_computed_and_cached_in_ms": round(elapsed_ms, 3),
@@ -420,53 +456,75 @@ def _top_edges(fixture_node: str, k: int) -> list[dict]:
     return sorted(edges, key=lambda e: (-e["count"], e["next_node"]))[:k]
 
 
+def _display_id(node: str) -> str:
+    # Fixture nodes show their bare fixture_id (matches what the main app
+    # displays); interaction nodes keep their ACTION:/SCREEN: prefix, which
+    # is already a short, readable label and doubles as a visible node-type
+    # marker in the 3D view.
+    return node[len("FIXTURE:"):] if node.startswith("FIXTURE:") else node
+
+
+def _node_kind(node: str) -> str:
+    if node.startswith("FIXTURE:"):
+        return "fixture"
+    if node.startswith("ACTION:"):
+        return "action"
+    if node.startswith("SCREEN:"):
+        return "screen"
+    return "other"
+
+
 @app.get("/v1/graph/session/{session_key}")
 def graph_session(session_key: str, neighbor_limit: int = 6):
     """A small, bounded subgraph for the 3D graph explorer's "live session"
     mode -- NOT the full 16,692-fixture graph (that would be an unusable
-    hairball and slow to render). Nodes: every fixture this session has
-    opened ("seen"), the fixtures currently recommended next
-    ("recommended"), and each seen fixture's top co-occurrence neighbors
-    ("neighbor", for context on WHY a recommendation was made).
+    hairball and slow to render).
+
+    Nodes are BOTH real node types from the graph schema, not fixtures
+    only: every interaction node (SCREEN:/ACTION:) and content/fixture node
+    (FIXTURE:) this session has actually touched, in real order ("seen" /
+    "interaction"), plus the fixtures currently recommended next
+    ("recommended"), plus each seen fixture's top co-occurrence neighbors
+    ("neighbor", for context on WHY a recommendation was made). An earlier
+    version of this endpoint filtered to FIXTURE: nodes before building the
+    walk, which silently dropped every interaction node from the live
+    visualization even though the graph has always had two node types.
 
     Two DIFFERENT kinds of edge, and both are real, not fabricated:
-    - "session_path": this exact session's own fixtures, connected in the
-      real order they were opened. This can't come from the precomputed
-      fixture_adjacency artifact -- that was built before this live session
-      existed -- so it's derived directly from the session's own event
-      order instead. Without this, a session's own fixtures rendered as
-      isolated unconnected stars (each only linked to ITS historical
-      neighbors), which looked broken even though the underlying data was
-      correct -- there is no guarantee any two fixtures a person happens to
-      open in one sitting were ever historically co-viewed by anyone else.
-    - "cooccurrence": the real historical edges from fixture_adjacency.json,
-      i.e. why the system is considering a given neighbor/recommendation at
-      all."""
+    - "session_path": this exact session's own real walk (interaction AND
+      fixture nodes together), connected in the real order they happened.
+      This can't come from the precomputed fixture_adjacency artifact --
+      that was built before this live session existed -- so it's derived
+      directly from the session's own event order instead.
+    - "cooccurrence": the real historical fixture-to-fixture edges from
+      fixture_adjacency.json, i.e. why the system is considering a given
+      neighbor/recommendation at all."""
     recent_nodes = session_store.get_recent_nodes(session_key)
-    # Order-preserving distinct fixtures actually opened this session --
-    # needed to draw the real click-by-click path, not just the unordered
-    # set that rank.viewed_fixtures() returns.
-    seen_ordered: list[str] = []
-    seen_set: set[str] = set()
+    # Order-preserving distinct WALK -- every real node this session
+    # touched, interaction and content alike, in the real order they
+    # happened (not just the fixture-only set rank.viewed_fixtures() returns).
+    walk_ordered: list[str] = []
+    walk_set: set[str] = set()
     for n in recent_nodes:
-        if n.startswith("FIXTURE:") and n not in seen_set:
-            seen_set.add(n)
-            seen_ordered.append(n)
-    seen = seen_set
+        if n not in walk_set:
+            walk_set.add(n)
+            walk_ordered.append(n)
+
+    seen_fixtures = {n for n in walk_ordered if n.startswith("FIXTURE:")}
 
     cached = session_store.get_cached_recommendation(session_key) or {}
     recommended = {c["fixture"] for c in cached.get("candidates", [])}
 
     node_roles: dict[str, str] = {}
-    for f in seen_ordered:
-        node_roles[f] = "seen"
+    for n in walk_ordered:
+        node_roles[n] = "seen" if n.startswith("FIXTURE:") else "interaction"
     for f in recommended:
         node_roles.setdefault(f, "recommended")
 
     edges: list[dict] = []
-    for a, b in zip(seen_ordered, seen_ordered[1:]):
+    for a, b in zip(walk_ordered, walk_ordered[1:]):
         edges.append({"source": a, "target": b, "weight": 1, "kind": "session_path"})
-    for f in seen:
+    for f in seen_fixtures:
         for edge in _top_edges(f, neighbor_limit):
             neighbor = edge["next_node"]
             node_roles.setdefault(neighbor, "neighbor")
@@ -474,8 +532,9 @@ def graph_session(session_key: str, neighbor_limit: int = 6):
 
     nodes_out = [
         {
-            "id": node.replace("FIXTURE:", ""),
+            "id": _display_id(node),
             "role": role,
+            "kind": _node_kind(node),
             "sport": _sport_map.get(node),
             "sport_label": SPORT_LABELS.get(_sport_map.get(node, ""), _sport_map.get(node)),
         }
@@ -483,8 +542,8 @@ def graph_session(session_key: str, neighbor_limit: int = 6):
     ]
     edges_out = [
         {
-            "source": e["source"].replace("FIXTURE:", ""),
-            "target": e["target"].replace("FIXTURE:", ""),
+            "source": _display_id(e["source"]),
+            "target": _display_id(e["target"]),
             "weight": e["weight"],
             "kind": e["kind"],
         }
@@ -492,7 +551,7 @@ def graph_session(session_key: str, neighbor_limit: int = 6):
     ]
     return {
         "session_key": session_key,
-        "distinct_fixtures_seen": len(seen),
+        "distinct_fixtures_seen": len(seen_fixtures),
         "recommendation_reason": cached.get("reason"),
         "nodes": nodes_out,
         "edges": edges_out,

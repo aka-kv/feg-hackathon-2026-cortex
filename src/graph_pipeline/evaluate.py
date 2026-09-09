@@ -49,7 +49,7 @@ def first_seen_fixtures_per_session(steps: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def evaluate(top_n: int = 3) -> dict:
+def evaluate(top_n: int = 3, rerank_shrinkage_k: float = rank.RERANK_SHRINKAGE_K) -> dict:
     df, _ = clean.clean()
     df = nodes.annotate(df)
     steps = build_steps(df)
@@ -92,7 +92,7 @@ def evaluate(top_n: int = 3) -> dict:
         # variants against each other.
         system_result = rank.recommend(
             seen_at_trigger, fixture_adjacency, pop, protection_state="allowed",
-            top_n=top_n, sport_map=sport_map,
+            top_n=top_n, sport_map=sport_map, rerank_shrinkage_k=rerank_shrinkage_k,
         )
         system_candidates = {c["fixture"] for c in system_result["candidates"]}
         system_sources = [c["source"] for c in system_result["candidates"]]

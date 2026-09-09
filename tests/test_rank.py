@@ -90,6 +90,35 @@ def test_deterministic_tie_break_is_score_desc_then_fixture_id_asc():
     assert [c["fixture"] for c in result] == ["FIXTURE:aaa", "FIXTURE:zzz"]
 
 
+def test_rerank_at_zero_shrinkage_is_a_no_op():
+    candidates = [
+        {"fixture": "FIXTURE:a", "score": 10, "source": "fixture_cooccurrence", "sport": None},
+        {"fixture": "FIXTURE:b", "score": 8, "source": "fixture_cooccurrence", "sport": None},
+    ]
+    result = rank.rerank_candidates(candidates, popularity_df=None, shrinkage_k=0)
+    # k=0 must return stage-1's candidates completely unchanged -- this is
+    # the property that makes RERANK_SHRINKAGE_K=0.0 (the shipped default)
+    # mathematically identical to the pre-reranking algorithm.
+    assert result == candidates
+
+
+def test_rerank_can_flip_order_when_popularity_prior_dominates():
+    popularity_df = pd.DataFrame(
+        {"bet_intent_count": [1000, 1]}, index=["FIXTURE:b", "FIXTURE:a"],
+    )
+    candidates = [
+        {"fixture": "FIXTURE:a", "score": 10, "source": "fixture_cooccurrence", "sport": None},
+        {"fixture": "FIXTURE:b", "score": 9, "source": "fixture_cooccurrence", "sport": None},
+    ]
+    # A is a marginally stronger co-occurrence match, but B is overwhelmingly
+    # more popular -- at a high enough shrinkage_k, the popularity prior
+    # should be able to overturn a near-tie. Demonstrates the reranking
+    # stage actually does something at k>0 (its real behavior is validated
+    # against held-out data in evaluate.py, not asserted here).
+    result = rank.rerank_candidates(candidates, popularity_df, shrinkage_k=0.9)
+    assert [c["fixture"] for c in result] == ["FIXTURE:b", "FIXTURE:a"]
+
+
 def test_sport_segmentation_restricts_candidates_to_seen_sports():
     adjacency = {
         "FIXTURE:tennis_a": [

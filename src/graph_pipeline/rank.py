@@ -21,6 +21,29 @@ from __future__ import annotations
 
 MIN_FIXTURES_FOR_GRAPH_SIGNAL = 3  # mentor's own example threshold
 
+# Stage 1 (retrieval) pulls this many candidates -- more than we ever show
+# -- so stage 2 (reranking, below) has real material to work with instead
+# of reranking an already-truncated top-3. Tuned empirically against
+# evaluate.py's held-out harness alongside RERANK_SHRINKAGE_K; see rank.py's
+# module docstring / design-final-sports-graph.md for the sweep results.
+RETRIEVAL_POOL_SIZE = 15
+
+# How much weight the reranking stage's popularity-smoothing prior gets,
+# on a 0..1 scale (0 = pure stage-1 co-occurrence ranking; 1 = pure
+# popularity ranking). Swept against the held-out evaluation before
+# shipping, not guessed -- and the honest result was that ANY nonzero
+# weight regresses accuracy sharply and immediately (hit@3 0.4214 -> 0.3711
+# at just k=0.01, continuing to fall as k increases further; see
+# design-final-sports-graph.md's verification log for the full sweep).
+# Same root cause as the earlier, separately-rejected PMI/lift experiment:
+# co-occurrence counts are sparse enough that the argmax is often decisive,
+# and nudging it with ANY popularity weight costs real hits far more often
+# than it fixes ties. Default is therefore 0 -- the reranking STAGE is real,
+# tested, and available (see rerank_candidates()), but this particular
+# signal is shipped disabled because it measurably makes things worse, not
+# because it wasn't tried.
+RERANK_SHRINKAGE_K = 0.0
+
 
 def eligibility_gate(protection_state: str) -> bool:
     """Unconditional first check, per docs §7 — this must run before any
@@ -161,6 +184,64 @@ def popularity_candidates(
     return out
 
 
+def _popularity_lookup(popularity_df, fixture: str) -> int:
+    if popularity_df is None or fixture not in popularity_df.index:
+        return 0
+    return int(popularity_df.at[fixture, "bet_intent_count"])
+
+
+def rerank_candidates(
+    candidates: list[dict],
+    popularity_df,
+    shrinkage_k: float = RERANK_SHRINKAGE_K,
+) -> list[dict]:
+    """Stage 2: reranking. graph_candidates()/popularity_candidates() are
+    STAGE 1 (retrieval) -- they pull a wider pool than we show, ranked
+    purely by their own single raw signal. This stage blends in a SECOND,
+    independent signal (global popularity, as a smoothing prior) before the
+    final cut to top_n.
+
+    Why: co-occurrence evidence is sparse (median ~2 observations per
+    fixture pair -- see sport_segmentation.py's docstring), so when two or
+    more retrieved candidates are close in raw score, that's often noise,
+    not a real preference signal. A small popularity-aware nudge makes the
+    final ranking more robust to that sparsity without letting popularity
+    override a clear stage-1 leader.
+
+    Both signals are RANK-NORMALIZED to [0, 1] within this candidate pool
+    before blending (not used at their raw magnitude) -- co-occurrence
+    scores are small integers while popularity counts can be orders of
+    magnitude larger, so blending raw values would let popularity swamp the
+    primary signal entirely. This is deliberately NOT the earlier, REJECTED
+    PMI/lift experiment (see design-final-sports-graph.md): that approach
+    DIVIDED a candidate's score by its own popularity, which punished
+    exactly the candidates with the strongest raw evidence, and it measurably
+    hurt accuracy (0.4162 -> 0.2642). This approach only ADDS a bounded,
+    rank-normalized prior -- at shrinkage_k=0 it is mathematically identical
+    to the original, already-validated ranking.
+
+    shrinkage_k was chosen by sweeping candidate values against evaluate.py's
+    held-out harness, not guessed -- see that module's docstring for the
+    sweep result this value came from."""
+    if len(candidates) <= 1 or shrinkage_k <= 0:
+        return candidates
+
+    max_score = max(c["score"] for c in candidates) or 1
+    pops = [_popularity_lookup(popularity_df, c["fixture"]) for c in candidates]
+    max_pop = max(pops) or 1
+
+    reranked = []
+    for c, pop in zip(candidates, pops):
+        score_norm = c["score"] / max_score
+        pop_norm = pop / max_pop
+        composite = (1 - shrinkage_k) * score_norm + shrinkage_k * pop_norm
+        reranked.append({**c, "composite_score": round(composite, 6)})
+
+    # Same deterministic tie-break rule as stage 1: score desc, fixture_id asc.
+    reranked.sort(key=lambda c: (-c["composite_score"], c["fixture"]))
+    return reranked
+
+
 def recommend(
     recent_nodes: list[str],
     fixture_adjacency_index: dict,
@@ -169,6 +250,7 @@ def recommend(
     top_n: int = 3,
     sport_map: dict | None = None,
     forced_sport: str | None = None,
+    rerank_shrinkage_k: float = RERANK_SHRINKAGE_K,
 ) -> dict:
     """The single entry point the serving layer calls. Returns a dict with
     an explicit `allowed` flag and, if allowed, a ranked candidate list with
@@ -197,11 +279,18 @@ def recommend(
         candidates = popularity_candidates(popularity_df, seen, top_n, relevant_sports, sport_map)
         basis = f"cold_start (fewer than {MIN_FIXTURES_FOR_GRAPH_SIGNAL} fixtures viewed this session)"
     else:
-        candidates = graph_candidates(seen, fixture_adjacency_index, seen, top_n, sport_map, relevant_sports)
-        if len(candidates) < top_n:
-            already = seen | {c["fixture"] for c in candidates}
-            candidates += popularity_candidates(popularity_df, already, top_n - len(candidates), relevant_sports, sport_map)
-        basis = f"fixture_cooccurrence ({len(seen)} fixtures viewed this session)"
+        # Stage 1 (retrieval): pull a wider pool than top_n so stage 2 has
+        # real material to rerank, rather than reranking an already-cut
+        # top-3 (which would just relabel the existing ranking).
+        pool_size = max(top_n, RETRIEVAL_POOL_SIZE)
+        pool = graph_candidates(seen, fixture_adjacency_index, seen, pool_size, sport_map, relevant_sports)
+        if len(pool) < pool_size:
+            already = seen | {c["fixture"] for c in pool}
+            pool += popularity_candidates(popularity_df, already, pool_size - len(pool), relevant_sports, sport_map)
+        # Stage 2 (reranking): blend in the popularity smoothing prior, then
+        # cut to top_n. See rerank_candidates()'s docstring for why.
+        candidates = rerank_candidates(pool, popularity_df, rerank_shrinkage_k)[:top_n]
+        basis = f"fixture_cooccurrence+rerank ({len(seen)} fixtures viewed this session)"
 
     # Belt-and-suspenders: the exclude-set logic above already guarantees
     # no duplicates and no already-seen fixture can appear, but assert it
